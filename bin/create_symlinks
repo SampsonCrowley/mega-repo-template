@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# set -e
+
+set -x # -> for debug
+
+here=$(pwd)
+
+for d in $here/*/vendor ; do
+  echo "$d"
+  ln -sf "$here/common" "$d/common"
+done

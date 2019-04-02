@@ -1,0 +1,31 @@
+{
+  "name": "www",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "cpx": "^1.5.0",
+    "react": "^16.8.6",
+    "react-dom": "^16.8.6",
+    "react-scripts": "2.1.8"
+  },
+  "scripts": {
+    "start": "yarn watch-common-files & (sleep 2 && react-scripts start)",
+    "build": "yarn copy-common-files && react-scripts build",
+    "test": "yarn copy-common-files && react-scripts test",
+    "eject": "react-scripts eject",
+    "common-files": "node scripts/common-files",
+    "copy-common-files": "yarn common-files copy js assets public",
+    "watch-common-files": "yarn copy-common-files && yarn common-files watch js assets public"
+  },
+  "eslintConfig": {
+    "extends": "react-app"
+  },
+  "browserslist": [
+    ">0.2%",
+    "not dead",
+    "not ie <= 11",
+    "not op_mini all"
+  ],
+  "devDependencies": {
+  }
+}

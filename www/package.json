@@ -1,0 +1,32 @@
+{
+  "name": "mega-repo-template-www",
+  "version": "0.0.1",
+  "description": "Test Mono repo with Create React App",
+  "engines": {
+    "node": ">=10.x"
+  },
+  "scripts": {
+    "start": "node server",
+    "build": "cd client/ && yarn install && yarn install --only=dev --no-shrinkwrap && yarn run build"
+  },
+  "cacheDirectories": [
+    "node_modules",
+    "client/node_modules"
+  ],
+  "dependencies": {
+    "express": "^4.16.4"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SampsonCrowley/mega-repo-template.git"
+  },
+  "keywords": [
+    "node",
+    "heroku",
+    "create-react-app",
+    "react",
+    "monorepo"
+  ],
+  "license": "MIT",
+  "devDependencies": {}
+}

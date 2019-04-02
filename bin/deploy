@@ -1,0 +1,189 @@
+#!/bin/bash
+
+set -e
+
+# set -x # -> for debug
+
+#rm -rf /tmp/heroku
+
+parse_git_branch() {
+  git branch 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/ (\1) /'
+}
+
+parse_commit_hash() {
+  git log -1 | head -1
+}
+
+sync_folders() {
+  rsync -rP --delete --exclude=.git $1/ $2/ >/dev/null
+}
+
+function pull_git_repo() {
+  set +e
+  git fetch
+  git reset --hard origin/master
+  set -e
+}
+
+# config
+PROJECT="mega-repo-template"
+REPO="git@github.com:SampsonCrowley/$PROJECT.git"
+TMPDIR="/var/tmp/heroku"
+COMMIT_LOG="`parse_git_branch`: `parse_commit_hash`"
+
+# globals
+here=$(pwd)
+
+if [ -z "$JENKINS_HOME" ]; then
+  CODE_SOURCE_DIR="$TMPDIR/$PROJECT"
+else
+  CODE_SOURCE_DIR=$(pwd)
+fi
+
+prepare() {
+  echo
+  echo "=============== Fetch latest version of code from GH ==============="
+  echo
+
+  # make sure our changes our there, but no need on jenkins
+  echo "Pushing local changes...."
+  git push
+  echo
+
+  # make sure TMPDIR is in place and go there
+  if [ ! -d $TMPDIR ];  then mkdir $TMPDIR;    fi
+  cd $TMPDIR
+
+  # make sure REPO is in place and go there
+  if [ ! -d $PROJECT ]; then git clone $REPO;  fi
+  cd $PROJECT
+
+  # checkout last version of whatever needs checkouting
+  if [ "$#" -gt "0" ];  then git checkout $@;  fi
+  echo "Pulling from GitHub..."
+  git fetch
+  git reset --hard origin/master
+  echo
+}
+
+function deploy() {
+
+  export TARGET=$1
+
+  function sync_common() {
+    # replace vendor/common symling with the actual folder
+    echo "Syncing vendor/common..."
+    echo "$TMPDIR/$TARGET/vendor/common"
+
+    if [ -f "$TMPDIR/$TARGET/vendor/common" ]; then
+      rm "vendor/common"
+    fi
+
+    if [ ! -d "$TMPDIR/$TARGET/vendor" ]; then
+      mkdir "$TMPDIR/$TARGET/vendor"
+    fi
+
+    sync_folders "$CODE_SOURCE_DIR/common" "$TMPDIR/$TARGET/vendor/common"
+    echo "OK"
+    echo
+  }
+
+  echo
+  echo "=================== STEP 1: assemble the deployment code ==================="
+  echo
+
+  cd $TMPDIR
+
+
+  echo "Assembling project-specific code..."
+  HEROKU_REPO=""
+  # sync the main part of the project
+  if [ "$1" = "admin" ] || [ "$1" = "api" ] ||
+     [ "$1" = "authenticate" ] || [ "$1" = "www" ]; then
+
+    if [ -f "$CODE_SOURCE_DIR/$1/repo_name" ]; then
+      HEROKU_REPO=$(cat "$CODE_SOURCE_DIR/$1/repo_name")
+    fi
+
+    if [ -z "$HEROKU_REPO" ]; then
+      HEROKU_REPO="$PROJECT-$1"
+    fi
+
+    echo "Pulling from $HEROKU_REPO heroku app repo..."
+    echo
+    if [ ! -d $1 ] || [ -d $1/.git ]; then
+      rm -rf $1
+      heroku git:clone -a $HEROKU_REPO $1;
+    fi
+    cd $1
+    if [ -d .git ]; then
+      pull_git_repo
+      sync_folders "$CODE_SOURCE_DIR/$1" "$TMPDIR/$1"
+      sync_common
+      echo
+    else
+      echo "HEROKU REPO DOESN'T EXIST: $HEROKU_REPO"
+      echo
+      exit 1
+    fi
+  else
+    echo "Invalid Deployment Target: $1"
+    exit 1
+  fi
+
+  echo "OK"
+  echo
+
+
+
+  echo
+  echo "========================== STEP 2: commit & push ==========================="
+  echo
+
+  cd $TMPDIR/$1
+
+  echo "Commiting..."
+  git add .
+  if git status | grep "Changes" ; then
+    git commit -a -m "$COMMIT_LOG"
+  fi
+  echo
+
+  echo "Pushing...."
+  git push
+  echo
+
+  echo "Sending an async ping so that the box wakes up... OK"
+  curl "https://"$HEROKU_REPO".herokuapp.com" &>/dev/null &
+  echo
+
+  echo "Heroku logs:"
+  echo "===================================="
+  echo
+  heroku logs -a $1 -n10000 >$here/log/heroku_log-$profile.log &
+  heroku logs -a $1 -n100
+}
+
+if [ -z "$JENKINS_HOME" ]; then
+  for profile do
+    if echo $profile|grep -v '^test.*$' >/dev/null; then
+      echo
+      echo "         YOU ARE DEPLOYING INTO PRODUCTION TO $profile, YOU CAN PRESS CTRL+C NOW IF YOU WISH TO STOP!!!!"
+      echo
+      read
+    fi
+  done
+
+  prepare
+fi
+
+echo
+echo "==================== Deploying the code to Heroku =================="
+echo
+
+for profile do
+  deploy $profile 2>&1 | sed -re 's/(.*)/\['$profile'\] \1/g'  &
+done
+
+wait
+echo
